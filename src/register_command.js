@@ -2,7 +2,7 @@ require('dotenv').config()
 const { REST, Routes, Collection } = require('discord.js')
 const fs = require('node:fs')
 const path = require('node:path')
-const client = require('./client.js')
+const client = require('./discord_client.js')
 
 module.exports = (guildId) => {
 	client.base_command = new Collection();
