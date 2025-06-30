@@ -7,7 +7,7 @@ class BaseCommand {
     }
 
     async execute(interaction){
-        await interaction.reply('Pls Implement!')
+        await interaction.reply('Command function not implemented!')
     }
 
     getData(){

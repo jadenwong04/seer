@@ -1,7 +1,4 @@
 {
-    "sentimentThreshold": -0.5,
-    "timeoutDuration": 10000,
-    "maxQueueSize": 5,
     "ascii_ubound": 127,
     "ascii_lbound": 0,
     "mod_embed_color": 16734003,

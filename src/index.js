@@ -1,10 +1,10 @@
 require('dotenv').config()
 const { Events, EmbedBuilder } = require('discord.js')
 const GuildMap = require('./conversation_map.js')
-const client = require('./client.js')
+const discord_client = require('./discord_client.js')
+const redis_client = require("./redis_client.js")
 const cfg = require('../config.json')
-const { mod } = require('./moderation')
-var cron = require("node-cron")
+const { hard_moderation } = require('./hard_moderation.js')
 
 let connection
 const guildMap = GuildMap.getInstance()
@@ -183,10 +183,5 @@ async function leaderboard_embed_builder(count, user, guild){
         )
         .setTimestamp()
 }   
-
-cron.schedule('0 0 1 * *', guildLeaderboardUpdate, {
-    scheduled: true,
-    timezone: "Asia/Kuala_Lumpur"
-})
 
 client.login(process.env.TOKEN);

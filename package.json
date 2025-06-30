@@ -10,16 +10,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "apos-to-lex-form": "^1.0.5",
-    "bad-words": "^3.0.4",
+    "@jayrbolton/suffix-tree": "^0.0.1",
     "discord.js": "^14.14.1",
     "dotenv": "^16.3.1",
-    "math.js": "^1.1.46",
     "mathjs": "^13.0.1",
     "mysql2": "^3.6.5",
-    "natural": "^7.0.6",
-    "node-cron": "^3.0.3",
-    "spelling-corrector": "^3.0.0",
-    "stopword": "^3.0.1"
+    "redis": "^5.5.6"
   }
 }

@@ -11,5 +11,3 @@ class Setting extends BaseCommand {
 }
 
 module.exports = Setting
-
-
