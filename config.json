@@ -1,6 +1,28 @@
 {
-    "ascii_ubound": 127,
-    "ascii_lbound": 0,
+    "pattern_match_ascii": {
+        "lbound": 0,
+        "ubound": 127
+    },
+    "guild_data_ttl": {
+        "event_scheduler": {
+            "unit": "DAY",
+            "quantity": 7
+        },
+        "interval": {
+            "unit": "MONTH",
+            "quantity": 1
+        }
+    },
+    "member_data_ttl": {
+        "event_scheduler": {
+            "unit": "DAY",
+            "quantity": 1
+        },
+        "interval": {
+            "unit": "DAY",
+            "quantity": 7
+        }
+    },
     "mod_embed_color": 16734003,
     "ldb_embed_color": 39423,
     "ansi_bg": 41

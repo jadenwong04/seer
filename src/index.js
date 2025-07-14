@@ -1,108 +1,112 @@
 require('dotenv').config()
 const { Events, EmbedBuilder } = require('discord.js')
 const GuildMap = require('./conversation_map.js')
-const discord_client = require('./discord_client.js')
-const redis_client = require("./redis_client.js")
-const cfg = require('../config.json')
-const { hard_moderation } = require('./hard_moderation.js')
+const discord_client = require('discord_client.js')
+const config = require('../config.json')
+const rule_based_moderation = require('rule_based_moderation.js')
 
-let connection
-const guildMap = GuildMap.getInstance()
+let mysql_session, redis_client
 
-const get_hex_value = (d) => { return '0x' + d.toString(16).padStart(6, '0') }
+discord_client.on('ready', async () => {
+    mysql_session = require("database/mysql_session.js")()
 
-client.on('ready', async () => {
-    connection = await require('./database/db')
-    await connection.query(`SELECT * FROM guild;`).then(([guildRec]) => {
-        //initialize guild map
-        guildRec.forEach((guild) => {
-            guildMap.addGuild(guild.guild_id)
-            //register command
-            require('./register_command')(guild.guild_id)
-        })
-        //initialize channel map
-        Array.from(guildMap.getKeys()).forEach(async (guildID) => {
-            const guild = client.guilds.cache.get(guildID)
-            if (guild){
-                guild.channels.cache.forEach((channel) => {
-                    guildMap.getValue(guild.id).addChannel(channel.id)
-                })
-            } else {
-                console.error(`Guild ID ${guildID} cannot be found.`)
-            }
-        })
-    }).catch((err) => {
-        console.error(err)
-    })
+    // handle guild related missed events while bot was down
+
+    const guild_dc_client = await discord_client.guilds.fetch()
+
+    const sorted_guild_id_db_snapshot = await mysql_session.sql(`SELECT guild_id FROM guild ORDER BY guild_id`)
+        .execute()
+        .fetchAll()
+        .then(guild_rows => guild_rows.map(guild_row => guild_row[0]))
+
+    const sorted_guild_id_dc_client = guild_dc_client.map(guild => guild.id).toSorted()
+
+    const [guilds_to_insert, guilds_to_delete] = anti_match_join(sorted_guild_id_db_snapshot, sorted_guild_id_dc_client)
+
+    await mysql_session.sql(
+        `
+            INSERT INTO guild (guild_id) 
+            VALUES ${guilds_to_insert.map(id => `(${id})`).join(", ")};
+        `
+    ).execute()
+
+    await mysql_session.sql(
+        `
+            UPDATE guild 
+            SET guild_expiry = NOW() + ${config.guild_data_ttl.interval.quantity} INTERVAL ${config.guild_data_ttl.interval.unit}
+            WHERE guild_id in (${guilds_to_delete.join(", ")});
+        `
+    ).execute()
+
+    // handle member related missed events while bot was down
+
+    const members_to_insert, members_to_delete = [], []
+
+    const sorted_members_id_db_snapshot = await mysql_session.sql(
+        `
+            SELECT member_id, guild_id
+            FROM member
+            ORDER BY member_id 
+            WHERE guild_id in (${sorted_guild_id_dc_client.join(", ")})
+        `
+    ).execute().fetchAll()
+
+    for (const guild of guild_dc_client) {
+        // register slash commands
+        require("register_command.js")(guild.id)
+
+        const sorted_members_id_dc_client = await guild.members.fetch()
+            .then(members => members.map(member => member.user.id).sorted())
+
+        const [partial_members_to_insert, partial_members_to_delete] = anti_match_join(sorted_members_id_db_snapshot
+            .filter(member => member[1] == guild.id)
+            .map(member => member[0]), sorted_members_id_dc_client)
+
+        members_to_insert.extend(partial_members_to_insert.map(member_id => [member_id, guild.id]))
+        members_to_delete.extend(partial_members_to_delete.map(member_id => [member_id, guild.id]))
+    }
+
+    await mysql_session.sql(
+        `
+            INSERT INTO members (member_id, guild_id) 
+            VALUES ${members_to_insert.map(([member_id, guild_id]) => `(${member_id}, ${guild_id})`).join(", ")};
+        `
+    ).execute()
+
+    await mysql_session.sql(
+        `
+            UPDATE members 
+            SET member_expiry = NOW() + ${config.member_data_ttl.interval.quantity} INTERVAL ${config.member_data_ttl.interval.unit}
+            WHERE member_id in (${members_to_delete.map(([member_id, guild_id]) => member_id).join(", ")}) and guild_id in (${members_to_delete.map(([member_id, guild_id]) => guild_id).join(", ")});
+        `
+    ).execute()
 })
 
-client.on('guildMemberAdd', async (member) => {
+discord_client.on('guildMemberAdd', async (member) => {
     if (member.user.bot) return;
     await connection.query(
-        `INSERT INTO user (user_id, user_name, guild_id) 
-        VALUES ('${member.user.id}', '${member.user.username}', '${member.guild.id}');`
-    )
-})
-
-client.on('guildMemberRemove', async (member) => {
-    if (member.user.bot) return;
-    await connection.query(
-        `DELETE FROM user 
-        WHERE guild_id = '${member.guild.id}'
-        AND user_id = '${member.user.id}';`
+        `
+            INSERT INTO user (id, guild_id) 
+            VALUES ('${member.user.id}', '${member.guild.id}');
+        `
     )
 })
 
 client.on('guildCreate', async (guild) => {
-    try{
-        await connection.query(
-            `INSERT INTO guild (guild_id, guild_name, join_date)
-            VALUES ('${guild.id}', '${guild.name}', "${new Date().toISOString().slice(0, 19).replace('T', ' ')}");`
-        )
-
-        await guild.members.fetch();
-
-        guild.members.cache.filter(m => !m.user.bot).forEach(async (m) => {
-            await connection.query(
-                `INSERT INTO user (guild_id, user_id, user_name)
-                VALUES('${m.guild.id}', '${m.user.id}', '${m.user.username}');`
-            )
-        })
-    } catch(err) {
-        console.error(err)
-    }
-    guildMap.addGuild(guild.id)
-
-    await guild.channels.fetch();
-
-    guild.channels.cache.forEach((channel) => {
-        guildMap.getValue(guild.id).addChannel(channel.id)
-    })
-    require('./register_command')(guild.id)
+    require('register_command.js')(guild.id)
+    await mysql_session.sql(
+    )
 })
 
 client.on('guildDelete', async (guild) => {
-    try{
-        await connection.query(
-            `DELETE FROM user
-            WHERE guild_id = ${guild.id};`
-        )
-        await connection.query(
-            `DELETE FROM guild
-            WHERE guild_id = ${guild.id};`
-        )
-    } catch (err) {
-        console.error(err)
-    }
-    guildMap.removeGuild(guild.id)
-})
-
-client.on('channelCreate', (channel) => {
-    guildMap.getValue(channel.guild.id).addChannel(channel.id)
-})
-
-client.on('channelRemove', (channel) => {   
-    guildMap.getValue(channel.guild.id).removeChannel(channel.id)
+    await connection.query(
+        `DELETE FROM user
+        WHERE guild_id = ${guild.id};`
+    )
+    await connection.query(
+        `DELETE FROM guild
+        WHERE guild_id = ${guild.id};`
+    )
 })
 
 client.on('messageCreate', async (msg) => {
@@ -141,47 +145,39 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 })
 
-async function checkForModeration(msg){
+async function checkForModeration(msg) {
     const [authorized_roles] = await connection.query(`SELECT * FROM guild_authorized_role WHERE guild_id = '${msg.guild.id}'`)
     const msg_author_roles_id = msg.guild.members.cache.get(msg.author.id).roles.cache.map(role => role.id)
     const [ignored_channels] = await connection.query(`SELECT * FROM guild_ignored_channel WHERE guild_id = '${msg.guild.id}'`)
     return msg.author.bot || authorized_roles.some(role => msg_author_roles_id.includes(role.role_id)) || ignored_channels.some(channel => channel.channel_id == msg.channelid)
 }
 
-const guildLeaderboardUpdate = async () => {
-    const CHANNEL_NAME = "sentiment-leaderboard"
-    await connection.query('SELECT guild_id FROM guild').then(([guilds]) => {
-        guilds.forEach(async guild => {
-            const guild_ref = client.guilds.cache.get(guild.guild_id)
-            let ldb_upd_channel = guild_ref.channels.cache.find(channel => channel.name == CHANNEL_NAME)
-            if (!ldb_upd_channel){
-                ldb_upd_channel = await guild_ref.channels.create({
-                    name: CHANNEL_NAME,
-                    type: 0
-                })
-            }
-            const ldb_count = (await connection.query(`SELECT ldb_count FROM guild WHERE guild_id = '${guild.guild_id}'`))[0][0].ldb_count
-            const user_sorted = (await connection.query(`SELECT user_id, st_score FROM user WHERE guild_id = '${guild.guild_id}' ORDER BY st_score DESC`))[0]
-            ldb_upd_channel.send({ embeds: [await leaderboard_embed_builder(ldb_count, user_sorted, guild_ref)] })
-        })
-    })
+function anti_match_join(sr_1, sr_2){
+    const r1_m = [], r2_m = []
+    let r1_p = 0, r2_p = 0
+
+    while (r1_p < sr_1.length && r2_p < sr_2.length){
+        if (sr_1[r1_p] == sr_2[r2_p]) {
+            r1_p += 1
+            r2_p += 1
+        } else if (sr_1[r1_p] < sr_2[r2_p]) {
+            r1_m.push(sr_1[r1_p])
+            r1_p += 1
+        } else {
+            r2_m.push(sr_2[r2_p])
+            r2_p += 1
+        }
+    }
+
+    for (r1_p; r1_p < sr_1.length; r1_p++) {
+        r1_m.push(sr_1[r1_p])
+    }
+
+    for (r2_p; r2_p < sr_2.length; r2_p++) {
+        r2_m.push(sr_2[r2_p])
+    }
+
+    return r1_m, r2_m
 }
 
-async function leaderboard_embed_builder(count, user, guild){
-    await guild.members.fetch();
-    const rank_val = Array.from({ length: user.length }, (_, index) => index + 1 + '.').join('\n')
-    const user_val = user.slice(0, count).map(usr => guild.members.cache.get(usr.user_id).user).join('\n')
-    const st_score_val = user.slice(0, count).map(usr => usr.st_score).join('\n')
-
-    return new EmbedBuilder()
-        .setTitle(`Sentiment Standouts: Top ${count}`)
-        .setColor(Number(get_hex_value(cfg.ldb_embed_color)))
-        .addFields(
-            { name: 'Rank', value: rank_val, inline: true },
-            { name: 'User', value: user_val, inline: true },
-            { name: 'Sentiment Score', value: st_score_val, inline: true }
-        )
-        .setTimestamp()
-}   
-
-client.login(process.env.TOKEN);
+discord_client.login(process.env.TOKEN);

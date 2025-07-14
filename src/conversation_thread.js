@@ -2,12 +2,11 @@ const cfg = require('../config.json')
 const Queue = require('./util/queue')
 const LinkedList = require('./util/linked_list')
 const queue = Queue.getInstance()
-const { update_user_sentiment } = require('./hard_moderation')
 
 module.exports = class Conversation {
     constructor(guildId, channelId){
-        this.gid = guildId
-        this.cid = channelId
+        this.guild_id = guildId
+        this.channel_id = channelId
         this.initData()
     }
 

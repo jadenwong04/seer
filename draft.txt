@@ -21,6 +21,12 @@
         Sub Features:
             - Custom Rule for each Main Features
 
+        Example:
+            - "FUCK" with 1 edit distance -> "FU" | "CK"
+            - "FXCK", "CK"
+            - "RETARDED" with 2 edit distance -> "RET" | "ARD" | "ED"
+            - "RXTXRDED"
+
     - Soft Moderation
 
         Description:
@@ -73,3 +79,11 @@
 
 Resources
     - LangChain
+
+"Buddy you are rxtxrded"
+
+("retarded", 2)
+
+0      1      2 
+"ret" "ard" "ed"
+
