@@ -2,7 +2,7 @@
   "name": "auto-mod",
   "version": "1.0.0",
   "description": "",
-  "main": "src/index.js",
+  "main": "src/database/test.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -11,10 +11,9 @@
   "license": "ISC",
   "dependencies": {
     "@jayrbolton/suffix-tree": "^0.0.1",
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.3.1",
-    "mathjs": "^13.0.1",
-    "mysql2": "^3.6.5",
-    "redis": "^5.5.6"
+    "@mysql/xdevapi": "^8.0.35",
+    "discord.js": "^14.21.0",
+    "dotenv": "^16.6.1",
+    "redis": "^5.6.0"
   }
 }
