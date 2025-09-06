@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const client = require('./discord_client.js')
 
-module.exports = (guildId) => {
+module.exports = async (guildId) => {
 	client.base_command = new Collection();
 	client.sub_command = new Collection();
 
@@ -13,7 +13,7 @@ module.exports = (guildId) => {
 	for (const file of base_commands){
 		const filePath = path.join(base_command_path, file)
 		const command = require(filePath)
-		const base_command_instance = new command()
+		const base_command_instance = await (new command()).async_init()
 		client.base_command.set(base_command_instance.name, base_command_instance)
 	};
 
@@ -22,7 +22,7 @@ module.exports = (guildId) => {
 	for (const file of sub_commands){
 		const filePath = path.join(sub_command_path, file);
 		const sub_command = require(filePath);
-		const sub_command_instance = new sub_command();
+		const sub_command_instance = await (new sub_command()).async_init();
 		if (client.sub_command.get(sub_command_instance.base_command) == null){
 			client.sub_command.set(sub_command_instance.base_command, new Collection())
 		}
@@ -37,16 +37,16 @@ module.exports = (guildId) => {
 		return base_cmd_data.toJSON()
 	});
 
-	const rest = new REST().setToken(process.env.TOKEN);
+	const rest = new REST().setToken(process.env.DC_TOKEN);
 
-	(async () => {
+	await (async () => {
 		try {
 			console.log(`Begin registering commands for guild ${guildId}`);
 
 			console.log(`Started refreshing ${commands_json.length} application (/) commands.`);
 
 			const data = await rest.put( 	
-				Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
+				Routes.applicationGuildCommands(process.env.DC_CLIENT, guildId),
 				{ body: commands_json },
 			);
 

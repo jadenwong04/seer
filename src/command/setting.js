@@ -1,13 +1,11 @@
-const BaseCommand = require('../util/base_command')
+const BaseCommand = require('../util/discord/base_command')
 
 class Setting extends BaseCommand {
     constructor() {
         super('setting', 'Configure various settings for the bot!')
     }
 
-    async execute(interaction){
-        await interaction.reply('Configuring settings...')
-    }
+    async execute(interaction) {}
 }
 
 module.exports = Setting

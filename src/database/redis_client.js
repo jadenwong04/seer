@@ -1,17 +1,30 @@
-import { createClient } from 'redis';
-require('dotenv').config();
+require('dotenv').config()
+const { 
+    createClient,
+} = require('redis')
 
-const client = createClient({
-    username: process.env.REDIS_USER,
-    password: process.env.REDIS_PW,
-    socket: {
-        host: process.env.REDIS_HOST,
-        port: process.env.REDIS_PORT
+let client;
+
+module.exports = async () => {
+
+    if (client) {
+        return client
     }
-});
 
-client.on('error', err => console.log('Redis Client Error', err));
+    client = createClient({
+        username: process.env.REDIS_USER,
+        password: process.env.REDIS_PW,
+        socket: {
+            host: process.env.REDIS_HOST,
+            port: process.env.REDIS_PORT
+        }
+    });
 
-await client.connect();
+    client.on('error', err => console.log('Redis Client Error', err));
 
-module.exports = client
+    await client.connect();
+
+    console.log("Initialized Client for Redis Cache")
+
+    return client
+}

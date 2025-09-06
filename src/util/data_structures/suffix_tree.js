@@ -1,5 +1,5 @@
 // Warning: Bug in Existing Implementation
-const cfg = require('../../config.json')
+const cfg = require('../../../config.json')
 const Stack = require('./stack')
 
 const get_ascii_index = (c) => { return c.charCodeAt(0) }

@@ -1,46 +1,108 @@
-const SubCommand = require('../util/sub_command')
+const { name } = require('../../package.json')
+const SubCommand = require('../util/discord/sub_command')
+const mysql_connector_fn = require("../database/mysql_session.js")
+const redis_connector_fn = require("../database/redis_client.js")
+const {
+    ActionRowBuilder,
+    RoleSelectMenuBuilder,
+    MessageFlags,
+    ComponentType,
+    roleMention,
+    userMention
+} = require("discord.js")
+const {
+    WriteOperation,
+    get_authorized_role,
+    write_authorized_role
+} = require("../database/db_helper.js")
 
-class AuthorizeRole extends SubCommand {
+module.exports = class AuthorizeRole extends SubCommand {
     constructor(){
-        super('setting', 'authorized_role', 'Specify the roles that have access to the bot')
+        super('setting', 'authorize_role', `Specify roles that have access to ${name}`)
+        this.discord_client = require("../discord_client.js")
+        this.role_select_input_interval = 60_000
     }
 
+    async async_init(){
+        this.redis_client = await redis_connector_fn()
+        this.mysql_session = await mysql_connector_fn()
+        return this
+    }   
+
     async execute(interaction){
-        const connection = await require('../database/db')
-        const authorizedRole = interaction.options.getRole('value')
-        const roleAction = interaction.options.getString('action')
+        const input_action = interaction.options.getString('action')
 
-        switch(roleAction) {
-            case 'add':
-                try {
-                    await connection.query(`
-                    INSERT INTO guild_authorized_role (guild_id, role_id, role_name) 
-                    VALUES('${interaction.guild.id}', '${authorizedRole.id}', '${authorizedRole.name}')`)
+        switch(input_action) {
+            case 'set':
+                const authorized_role = await get_authorized_role(this.mysql_session, this.redis_client, interaction.guildId)
 
-                    await interaction.followUp({content: `${authorizedRole} is successfully authorized!`, ephemeral:true})
-                } catch (err) {
-                    if (err.errno === 1062) {
-                        await interaction.followUp({content: `${authorizedRole} is already authorized!`, ephemeral:true})
-                    } else {
-                        await interaction.followUp({content: `error code: ${err.code}`, ephemeral:true})
-                        console.log(err)
+                const role_select = new RoleSelectMenuBuilder()
+                    .setCustomId("role_input")
+                    .setPlaceholder("select role")
+                    .setMaxValues(1)
+                    .setMinValues(0)
+                
+                if (authorized_role != null) {
+                    role_select.setDefaultRoles(authorized_role)
+                }
+
+                const role_select_component = new ActionRowBuilder().addComponents(role_select)
+
+                const role_select_interaction = await interaction.reply(
+                    {
+                        content: `Select role that is authorized to access ${userMention(this.discord_client.user.id)}`,
+                        components: [role_select_component],
+                        flags: MessageFlags.Ephemeral,
+                        withResponse: true,
                     }
-                }
-                break;
-            case 'remove':
-                try {
-                    await connection.query(`
-                    DELETE FROM guild_authorized_role
-                    WHERE role_id = ${authorizedRole.id}`)
+                )
 
-                    await interaction.followUp({content: `${authorizedRole} is successfully unauthorized!`, ephemeral:true})
-                } catch (err) {
-                    await interaction.followUp({content: `error code: ${err.code}`, ephemeral:true})
-                    console.log(err)
-                }
+                const role_select_collector = role_select_interaction.resource.message.createMessageComponentCollector({
+                    componentType: ComponentType.RoleSelect,
+                    time: this.role_select_input_interval
+                })
+
+                role_select_collector.on('collect', async(component_interaction) => {
+                    try {
+                        let role_id, write_operation, follow_up_content
+
+                        if (component_interaction.values.length > 0) {
+                            [role_id] = component_interaction.values
+                            write_operation = WriteOperation.update
+                            follow_up_content = `Successfully set authorized role to ${roleMention(role_id)}.`
+                        } else {
+                            role_id = null
+                            write_operation = WriteOperation.delete
+                            follow_up_content = `Successfully removed existing authorized role.`
+                        }
+
+                        await write_authorized_role(
+                            this.mysql_session,
+                            this.redis_client,
+                            interaction.guildId,
+                            role_id,
+                            write_operation
+                        )
+
+                        await interaction.followUp({
+                            content: follow_up_content,
+                            flags: MessageFlags.Ephemeral,
+                        })
+                    } catch {
+                        await interaction.followUp({
+                            content: `Failed to set an authorized role.`,
+                            flags: MessageFlags.Ephemeral
+                        })
+                    }
+                    component_interaction.deferUpdate()
+                })
+
                 break;
             default:
-                await interaction.followUp('Invalid chosen action!')
+                await interaction.reply({
+                    content: 'Invalid Action Chosen',
+                    flags: MessageFlags.Ephemeral
+                })
         }
     }
 
@@ -50,16 +112,12 @@ class AuthorizeRole extends SubCommand {
                 .setDescription(this.description)
                 .addStringOption(option => option
                     .setName('action')
-                    .setDescription('choose an action on whether to add a role or remove a role')
+                    .setDescription('choose an action')
                     .addChoices(
-                        { name: 'add-a-role', value: 'add' },
-                        { name: 'remove-a-role', value: 'remove' })
-                    .setRequired(true))
-                .addRoleOption(role => role
-                    .setName('value')
-                    .setDescription('role to specify')
-                    .setRequired(true)))
+                        { name: 'set-role', value: 'set' }
+                    )
+                    .setRequired(true)
+                )
+        )
     }
 }
-
-module.exports = AuthorizeRole

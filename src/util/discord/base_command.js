@@ -6,6 +6,8 @@ class BaseCommand {
         this.description = description
     }
 
+    async async_init() { return this }
+
     async execute(interaction){
         await interaction.reply('Command function not implemented!')
     }
