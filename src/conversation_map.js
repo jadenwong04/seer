@@ -1,4 +1,4 @@
-const CustomMap = require('./util/map.js')
+const CustomMap = require('./util/data_structures/map.js')
 const Conversation = require('./conversation')
 
 class GuildMap extends CustomMap {

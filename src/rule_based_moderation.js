@@ -1,12 +1,35 @@
 const SuffixTree = require('@jayrbolton/suffix-tree')
 const cfg = require('../config.json')
-const { EmbedBuilder } = require('discord.js')
+const natural = require("natural")
+const word_bank = require('wordlist-english')['english']
+const tokenizer = new natural.WordTokenizer();
+const word_dict = new Set(word_bank.map(word => word.toLowerCase()))
 
 const get_ascii_index = (c) => { return c.charCodeAt(0) }
-const get_hex_value = (d) => { return '0x' + d.toString(16).padStart(6, '0') }
 
-module.exports = async (message_id, guild_id, message_content) => {
+module.exports = (message_content, lookout_terms) => {
+    const tokenized_message = tokenizer.tokenize(message_content)
+    const joined_tokenized_message = tokenized_message.join("")
+
+    let length_acc = 0
+    const tokenized_intervals = []
+    for (token of tokenized_message) {
+        tokenized_intervals.push([length_acc + 1, length_acc + token.length])
+        length_acc += token.length
+    }
+
+    const lookout_violations = new Map()
     
+    lookout_terms.map(lookout_term => {
+        const [term, offset] = lookout_term.split(":")
+        return [term, Number(offset)]
+    }).forEach(([term, offset]) => {
+        const exact_matches = exact_pattern_match(joined_tokenized_message, term)
+        const approximate_matches = approximate_pattern_match(joined_tokenized_message, term, offset, tokenized_message, tokenized_intervals)
+        lookout_violations.set(term, exact_matches.length + approximate_matches.length)
+    })
+
+    return lookout_violations
 }
 
 function get_suffix_array(suffix_tree){
@@ -28,12 +51,12 @@ function dfs(current_node, counter, length_of_text, result){
 
 function get_bwt(message_content){
     const bwt = message_content + '$'
-    const suffix_arr = get_suffix_array(SuffixTree.create(message_content))
+    const suffix_arr = get_suffix_array(SuffixTree.create(bwt))
     return [suffix_arr.map(id => bwt[(id - 2 + bwt.length) % bwt.length]).join(''), suffix_arr]
 }
 
 function get_rank_arr(bwt){
-    const rank_arr = Array(cfg.ascii_ubound - cfg.ascii_lbound + 1).fill(0)
+    const rank_arr = Array(cfg.pattern_match_ascii.ubound - cfg.pattern_match_ascii.lbound + 1).fill(0)
     Array.from(bwt).forEach(char => rank_arr[get_ascii_index(char)] += 1)
     let counter = 1
     for (let i = 0; i < rank_arr.length; i++){
@@ -47,9 +70,9 @@ function get_rank_arr(bwt){
 }
 
 function get_occurrence_arr(bwt){
-    const occ_arr = Array(bwt.length+1).fill().map(() => Array(cfg.ascii_ubound - cfg.ascii_lbound + 1).fill(0))
+    const occ_arr = Array(bwt.length+1).fill().map(() => Array(cfg.pattern_match_ascii.ubound - cfg.pattern_match_ascii.lbound + 1).fill(0))
     for (let i = 1; i < bwt.length+1; i++){
-        for (let j = 0; j < cfg.ascii_ubound - cfg.ascii_lbound + 1; j++){
+        for (let j = 0; j < cfg.pattern_match_ascii.ubound - cfg.pattern_match_ascii.lbound + 1; j++){
             occ_arr[i][j] = occ_arr[i-1][j]
         }
         occ_arr[i][get_ascii_index(bwt[i-1])] += 1
@@ -75,34 +98,38 @@ function bwt_pattern_match(message_content, pattern){
     return suffix_arr.slice(sp-1, ep)
 }
 
-function partition_pattern(pattern, max_edit_distance){
+function partition_pattern(pattern, max_edit_distance) {
     const partitions = new Array(max_edit_distance + 1)
+    const offsets = new Array(max_edit_distance + 1)
     const partition_size = Math.ceil(pattern.length / (max_edit_distance + 1))
+
     let s_p, e_p
-    for (let pid = 0; pid < partitions.length; pid++){
+    for (let pid = 0; pid < partitions.length; pid++) {
         s_p = pid * partition_size
-        if (s_p + partition_size > pattern.length){
+        if (s_p + partition_size > pattern.length) {
             e_p = pattern.length
         } else {
             e_p = s_p + partition_size
         }
         partitions[pid] = pattern.slice(s_p, e_p)
+        offsets[pid] = s_p
     }
-    return partitions
+
+    return { partitioned_pattern: partitions, partitioned_offsets: offsets }
 }
 
-function get_edit_distance(tokenized_content, pattern){
+function get_edit_distance(tokenized_content, pattern) {
     const rows = tokenized_content.length + 1;
     const cols = pattern.length + 1;
 
     const edit_distance_matrix = Array.from({ length: rows }, () => Array(cols).fill(0));
 
-    for (let i = 0; i < rows; i++) {
-        edit_distance_matrix[i][0] = i;
-    }
-
     for (let j = 0; j < cols; j++) {
         edit_distance_matrix[0][j] = j;
+    }
+
+    for (let i = 0; i < rows; i++) {
+        edit_distance_matrix[i][0] = 0;
     }
 
     for (let i = 1; i < rows; i++) {
@@ -110,11 +137,11 @@ function get_edit_distance(tokenized_content, pattern){
             if (tokenized_content[i - 1] === pattern[j - 1]) {
                 edit_distance_matrix[i][j] = edit_distance_matrix[i - 1][j - 1];
             } else {
-                edit_distance_matrix[i][j] = 1 + Math.min(
-                    edit_distance_matrix[i][j - 1],    
-                    edit_distance_matrix[i - 1][j],    
-                    edit_distance_matrix[i - 1][j - 1]
-                )
+                edit_distance_matrix[i][j] = Math.min(
+                    edit_distance_matrix[i][j - 1] + 1, 
+                    edit_distance_matrix[i - 1][j],        
+                    edit_distance_matrix[i - 1][j - 1] + 1  
+                );
             }
         }
     }
@@ -122,79 +149,64 @@ function get_edit_distance(tokenized_content, pattern){
     return edit_distance_matrix[rows - 1][cols - 1];
 }
 
+function exact_pattern_match (message_content, pattern) {
+    return bwt_pattern_match(message_content, pattern)
+}
 
-function pattern_match(message_content, pattern, pattern_edit_distance){
-    const partitioned = partition_pattern(pattern, pattern_edit_distance)
+function approximate_pattern_match (
+    message_content,
+    pattern,
+    pattern_edit_distance,
+    tokenized_message,
+    tokenized_intervals
+) {
+    const { partitioned_pattern, partitioned_offsets } = partition_pattern(pattern, pattern_edit_distance)
 
-    const tokenized_positions = [... new Set(partitioned.flatMap((partition, partition_id) => {
-        const matches = bwt_pattern_match(message_content, pattern)
-        return matches.map(position => position - (partition_id * partitioned.length))
-    }))];
+    const partitioned_matches = partitioned_pattern.map((partition, partition_id) => {
+        const matches = bwt_pattern_match(message_content, partition)
+        return [partition_id, matches]
+    });
 
-    const filtered_tokenized_positions = tokenized_positions.filter(position => position >= 1 && (position + pattern.length - 1) - pattern_edit_distance <= message_content.length)
+    const sp_count = new Map()
 
-    const position_count = new Map()
-
-    filtered_tokenized_positions.forEach(position => {
-        if (position_count.get(position) === null) {
-            position_count.set(position, 1)
-        } else {
-            position_count.set(position, position_count.get(position) + 1)
-        }
+    partitioned_matches.forEach(([partition_id, matches]) => {
+        matches.forEach(position => {
+            const sp_position = Math.max(position - partitioned_offsets[partition_id], 1)
+            if (!sp_count.has(sp_position)) {
+                sp_count.set(sp_position, 1)
+            } else {
+                sp_count.set(sp_position, sp_count.get(sp_position) + 1)
+            }
+        })
     })
 
-    const exact_match_result = []
-    const approximate_match_positions = []
+    const approximate_positions = new Set()
 
-    for (const [position, count] of position_count){
-        if (count === partitioned.length) {
-            exact_match_result.push(position)
-        } else {
-            approximate_match_positions.push(position)
-        }
-    }
+    partitioned_matches.forEach(([partition_id, matches]) => {
+        matches
+            .filter(position => sp_count.get(Math.max(position - partitioned_offsets[partition_id], 1)) < partitioned_pattern.length) //filter non exact matches
+            .filter(position => !word_dict.has(tokenized_message[binary_search_interval(tokenized_intervals, position)].toLowerCase())) //filter typos 
+            .forEach(position => approximate_positions.add(Math.max(position - partitioned_offsets[partition_id], 1)))
+    })
 
-    const approximate_match_result = approximate_match_positions.map(position => {
-        s_p = position - 1
-        e_p = s_p + pattern.length
-        if (e_p > message_content.length) {
-            e_p = message_content.length
-        }
-        return [s_p, e_p]
-    }).map(([s_p, e_p]) => get_edit_distance(message_content.slice(s_p, e_p), pattern)).filter(edit_distance => edit_distance <= pattern_edit_distance)
+    const approximate_matches = Array.from(approximate_positions)
+        .map(position => ({ sp: position, ep: position + pattern.length - 1 }))
+        .filter(({sp, ep}) => get_edit_distance(message_content.slice(sp-1, ep), pattern) <= pattern_edit_distance)
 
-    return [exact_match_result, approximate_match_result]
+    return approximate_matches
 }
 
-async function rule_based_moderation(message_id, guild_id, message_content){
-    if (contains_profanity && sentiment_score < cfg.sentimentThreshold || text_filter.size > 0){
-        const format_instruction = Array.from(text_filter.entries(), ([pat, pos]) => {
-            return pos.map(p => [p-1, p+pat.length-2])
-        }).flat()
-        format_instruction.sort((a, b) => b[0]-a[0])
-        const ansi_start = `[0;${cfg.ansi_bg}m`
-        const ansi_end = `[0m`
-        format_instruction.forEach(([start, end]) => {
-            const before = msg.substring(0, start)
-            const substring = msg.substring(start, end+1)
-            const after = msg.substring(end+1, msg.length)
-            const formatted_substring = ansi_start + substring + ansi_end
-            msg = before + formatted_substring + after
-        })
-        msg = "```ansi\n" + msg + "\n```"
-        return mod_embed_msg_builder(id, gid, profanityFilter.clean(msg), sentiment_score, cfg.timeoutDuration * (Math.abs(Number(contains_profanity)*(Math.round(sentiment_score))) + text_filter.size))
+function binary_search_interval(tokenized_intervals, target) {
+    lo = 0
+    hi = tokenized_intervals.length - 1
+    while (lo <= hi) {
+        mid = Math.floor((lo + hi) / 2)
+        if (target >= tokenized_intervals[mid][0] && target <= tokenized_intervals[mid][1]) {
+            return mid 
+        } else if (target < tokenized_intervals[mid][0]) {
+            hi = mid - 1
+        } else if (target > tokenized_intervals[mid][1]) {
+            lo = mid + 1
+        }
     }
-    return null;
-}
-
-function mod_embed_msg_builder(id, gid, description, sentiment_score, timeout_duration){
-    return new EmbedBuilder()
-        .setColor(Number(get_hex_value(cfg.mod_embed_color)))
-        .setTitle("Moderation Result for msg `" + id + "` in guild `" + gid + "`")
-        .setDescription(description)
-        .addFields(
-            { name: 'Sentiment Score', value: `${sentiment_score}`, inline: true },
-            { name: 'Timeout Duration', value: `${timeout_duration / 1000} seconds`, inline: true },
-        )
-        .setFooter({ text:"Highlighted substring represents restricted keyword and '*' represents profanity." })
 }

@@ -5,8 +5,14 @@ class SubCommand {
         this.description = description
     }
 
-    async execute(interaction){
+    async async_init() { return this }
+
+    async execute(interaction) {
         await interaction.followUp('Pls Implement!')
+    }
+
+    get_base_command() {
+        return this.base_command
     }
 
     addBaseCmd(base_cmd_ref){
