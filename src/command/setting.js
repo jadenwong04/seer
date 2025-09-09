@@ -1,4 +1,4 @@
-const BaseCommand = require('../util/discord/base_command')
+const BaseCommand = require('../util/base_command')
 
 class Setting extends BaseCommand {
     constructor() {

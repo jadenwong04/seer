@@ -1,9 +1,9 @@
-const { name } = require('../package.json')
 const { 
     inlineCode,
     codeBlock,
     EmbedBuilder 
 } = require('discord.js')
+const { format_tabular_data } = require("./util/interactive_component.js")
 const discord_client = require('./discord_client.js')
 
 const ViolationType = {
@@ -21,22 +21,12 @@ function warn_user(guild, user, violation_type, payload) {
         case ViolationType.banned_term:
             const { original_message, used_banned_terms } = payload;
 
-            // Build a table-like string
-            let table = "Banned Term      | Times Used\n";
-            table += "-----------------|-----------\n";
-
-            used_banned_terms.forEach(([term, count]) => {
-                // Pad the banned term column to align
-                const paddedTerm = term.padEnd(16, " ");
-                table += `${paddedTerm} | ${count}\n`;
-            });
-
             warning_embed.addFields(
-                { name: 'Your Message:', value: codeBlock(original_message || '') },
-                { name: 'Analysis:', value: codeBlock(table) }
+                { name: 'Your Message:', value: codeBlock(original_message) },
+                { name: 'Analysis:', value: format_tabular_data(['Banned Term', 'Times Used'], used_banned_terms) }
             );
-            break;
 
+            break;
         default:
             throw new Error(`Unsupported Violation Type: ${violation_type}`);
     }

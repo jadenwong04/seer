@@ -1,4 +1,4 @@
-const BaseCommand = require('../util/discord/base_command')
+const BaseCommand = require('../util/base_command')
 const fs = require('node:fs')
 const path = require('node:path');
 

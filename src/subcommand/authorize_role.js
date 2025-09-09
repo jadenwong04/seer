@@ -1,5 +1,5 @@
 const { name } = require('../../package.json')
-const SubCommand = require('../util/discord/sub_command')
+const SubCommand = require('../util/sub_command')
 const mysql_connector_fn = require("../database/mysql_session.js")
 const redis_connector_fn = require("../database/redis_client.js")
 const {

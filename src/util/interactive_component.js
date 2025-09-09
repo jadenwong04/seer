@@ -23,6 +23,32 @@ function build_paging_component() {
     return paging_components
 }
 
+function format_tabular_data(header, rows) {
+    if (!header || header.length === 0) return "```No header```";
+    if (!rows || rows.length === 0) return "```No data```";
+
+    const allRows = [header, ...rows];
+
+    const colWidths = header.map((_, colIndex) =>
+        Math.max(...allRows.map(row => (row[colIndex] ? row[colIndex].toString().length : 0)))
+    );
+
+    const makeLine = (row) =>
+        row
+            .map((cell, colIndex) =>
+                cell.toString().padEnd(colWidths[colIndex], " ")
+            )
+            .join(" | ");
+
+    const headerLine = makeLine(header);
+
+    const separator = colWidths.map((w) => "-".repeat(w)).join("-|-");
+
+    const body = rows.map(makeLine);
+
+    return "```" + [headerLine, separator, ...body].join("\n") + "```";
+}
+
 function build_listing_embed(
     listing_config,
     paging_data,
@@ -35,7 +61,7 @@ function build_listing_embed(
     const embedded_page = new EmbedBuilder()
         .setColor(listing_config.color)
         .setTitle(listing_config.title)
-        .addFields(...current_page_data)
+        .setDescription(format_tabular_data(listing_config.header, current_page_data))
         .setFooter({ text: `Page: ${current_page}/${Math.ceil(paging_data.length / listing_config.page_size)}`})
         .setTimestamp()
     
@@ -88,5 +114,6 @@ function setup_paging_collector(
 module.exports = {
     build_paging_component,
     build_listing_embed,
-    setup_paging_collector
+    setup_paging_collector,
+    format_tabular_data
 }
