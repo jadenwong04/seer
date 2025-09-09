@@ -146,15 +146,6 @@ discord_client.on(Events.MessageCreate, async message => {
             message.content,
             await get_lookout_terms(mysql_session, redis_client, message.guildId)
         )
-        // console.log(exact_matches, approximate_matches)
-        // if (exact_matches.size > 0 || approximate_matches.size > 0) {
-        //     warn_user(
-        //         await discord_client.guilds.fetch(message.guildId),
-        //         message.author,
-        //         ViolationType.banned_term,
-        //         { message, exact_matches, approximate_matches }
-        //     )
-        // }
 
         if (Array.from(lookout_violations.values()).some(value => value > 0)) {
             warn_user(

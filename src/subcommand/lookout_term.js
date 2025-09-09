@@ -1,5 +1,5 @@
 const { name } = require("../../package.json")
-const SubCommand = require('../util/discord/sub_command')
+const SubCommand = require('../util/sub_command')
 const mysql_connector_fn = require("../database/mysql_session.js")
 const redis_connector_fn = require("../database/redis_client.js")
 const { 
@@ -18,7 +18,7 @@ const {
     build_paging_component,
     build_listing_embed,
     setup_paging_collector 
-} = require("../util/discord/interactive_component.js")
+} = require("../util/interactive_component.js")
 const ModalHandler = require("../util/modal_handler.js")
 
 module.exports = class LookoutTerm extends SubCommand{
@@ -29,8 +29,9 @@ module.exports = class LookoutTerm extends SubCommand{
         this.max_lookout_term_length = 25
         this.listing_config = {
             "title": "Lookout Terms",
+            "header": ["Term", "Offset"],
             "color": 39423,
-            "page_size": 10
+            "page_size": 5
         }
         this.modal_handler = ModalHandler.get_instance()
         this.modal_handler.register("add_term", this, "add_term")
@@ -60,10 +61,7 @@ module.exports = class LookoutTerm extends SubCommand{
             case 'show':
                 const paging_component = build_paging_component()
                 const lookout_term = await get_lookout_terms(this.mysql_session, this.redis_client, interaction.guildId)
-                const lookout_term_embed_data = lookout_term.map(term => {
-                    const [parsed_term, parsed_offset] = term.split(":")
-                    return { name: parsed_term, value: parsed_offset }
-                })
+                const lookout_term_embed_data = lookout_term.map(term => term.split(":"))
 
                 const lookout_term_listing_embed = build_listing_embed(
                     this.listing_config,

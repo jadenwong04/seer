@@ -1,5 +1,5 @@
 const { name } = require('../../package.json')
-const SubCommand = require('../util/discord/sub_command')
+const SubCommand = require('../util/sub_command')
 const mysql_connector_fn = require("../database/mysql_session.js")
 const redis_connector_fn = require("../database/redis_client.js")
 const { 
@@ -18,7 +18,7 @@ const {
     build_paging_component,
     build_listing_embed,
     setup_paging_collector 
-} = require("../util/discord/interactive_component.js")
+} = require("../util/interactive_component.js")
 
 module.exports = class IgnoreChannel extends SubCommand {
     constructor(){
@@ -28,6 +28,7 @@ module.exports = class IgnoreChannel extends SubCommand {
         this.channel_select_input_interval = 60_000
         this.listing_config = {
             "title": "Ignored Channels",
+            "header": ["Channel ID", "Channel Name"],
             "color": 39423,
             "page_size": 5
         }
@@ -53,7 +54,7 @@ module.exports = class IgnoreChannel extends SubCommand {
                 const guild = await this.discord_client.guilds.fetch(interaction.guildId)
                 const ignored_channel_id = await get_ignored_channels(this.mysql_session, this.redis_client, interaction.guildId)
                 const ignored_channel = await Promise.all(ignored_channel_id.map(channel_id => guild.channels.fetch(channel_id)))
-                const ignored_channel_embed_data = ignored_channel.map(channel => ({ name: channel.id, value: channel.name, }))
+                const ignored_channel_embed_data = ignored_channel.map(channel => [channel.id, channel.name])
 
                 const ignored_channel_listing_embed = build_listing_embed(
                     this.listing_config,

@@ -42,7 +42,7 @@ async function get_authorized_role(mysql_session, redis_client, guild_id) {
             `
         ).bind(guild_id).execute()).fetchOne()
 
-        await redis_client.set(cached_key, db_authorized_role)
+        await redis_client.set(cached_key, String(db_authorized_role))
 
         return db_authorized_role
     }
