@@ -63,7 +63,9 @@ async function get_lookout_terms(mysql_session, redis_client, guild_id) {
             `
         ).bind(guild_id).execute()).fetchAll()).map(lookout_term => [lookout_term[0], `${lookout_term[0]}:${lookout_term[1]}`])
 
-        await redis_client.hSet(cached_key, Object.fromEntries(db_lookout_terms))
+        if (db_lookout_terms.length > 0) {
+            await redis_client.hSet(cached_key, Object.fromEntries(db_lookout_terms))
+        }
 
         return await redis_client.hVals(cached_key)
     }

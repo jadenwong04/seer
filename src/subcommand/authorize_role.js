@@ -42,7 +42,7 @@ module.exports = class AuthorizeRole extends SubCommand {
                     .setMaxValues(1)
                     .setMinValues(0)
                 
-                if (authorized_role != null) {
+                if (authorized_role != "null") {
                     role_select.setDefaultRoles(authorized_role)
                 }
 

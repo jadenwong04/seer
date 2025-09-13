@@ -6,7 +6,6 @@ const {
 let client;
 
 module.exports = async () => {
-
     if (client) {
         return client
     }

@@ -7,17 +7,24 @@ const redis_connector_fn = require("./database/redis_client.js")
 const ModalHandler = require("./util/modal_handler.js")
 const {
     get_ignored_channels,
-    get_lookout_terms
+    get_lookout_terms,
+    get_authorized_role
 } = require("./database/db_helper.js")
 const {
-    ViolationType,
-    warn_user
-} = require("./action.js")
+    BannedTerm
+} = require("./violation")
 const rule_based_moderation_fn = require('./rule_based_moderation.js')
 
 let modal_handler
 let mysql_session
 let redis_client
+
+findValueGreaterThanZero = (map) => {
+    for (const value of map.values()) {
+        if (value > 0) return true
+    }
+    return false
+}
 
 discord_client.on(Events.ClientReady, async () => {
     try {
@@ -140,20 +147,31 @@ discord_client.on(Events.GuildDelete, async guild => {
 })
 
 discord_client.on(Events.MessageCreate, async message => {
+    const guild = await discord_client.guilds.fetch(message.guildId)
+    const channel = await guild.channels.fetch(message.channelId)
+    const member = await guild.members.fetch(message.author.id)
+    
+    const authorized_role = await get_authorized_role(mysql_session, redis_client, message.guildId)
     await get_ignored_channels(mysql_session, redis_client, message.guildId)
-    if (await redis_client.sIsMember(`ignored_channels:${message.guildId}`, message.channelId) == 0) {
+
+    if (
+        await redis_client.sIsMember(`ignored_channels:${message.guildId}`, message.channelId) == 0 
+        &&
+        !member.roles.cache.some(role => role.id == authorized_role)
+    ) {
         const lookout_violations = rule_based_moderation_fn(
             message.content,
             await get_lookout_terms(mysql_session, redis_client, message.guildId)
         )
 
-        if (Array.from(lookout_violations.values()).some(value => value > 0)) {
-            warn_user(
-                await discord_client.guilds.fetch(message.guildId),
+        if (findValueGreaterThanZero(lookout_violations)) {
+            new BannedTerm(
                 message.author,
-                ViolationType.banned_term,
-                { original_message: message.content, used_banned_terms: Array.from(lookout_violations).filter(([term, count]) => count > 0) }
-            )
+                guild,
+                channel,
+                message,
+                lookout_violations
+            ).warn()
         }
     }
 })

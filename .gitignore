@@ -1,4 +1,5 @@
 node_modules/
 .env
-system_design.drawio
-draft.txt
+assets/system_design.drawio
+assets/draft.txt
+dist/

@@ -61,7 +61,8 @@ module.exports = class LookoutTerm extends SubCommand{
             case 'show':
                 const paging_component = build_paging_component()
                 const lookout_term = await get_lookout_terms(this.mysql_session, this.redis_client, interaction.guildId)
-                const lookout_term_embed_data = lookout_term.map(term => term.split(":"))
+                const lookout_term_data = lookout_term ? lookout_term : []
+                const lookout_term_embed_data = lookout_term_data.map(term => term.split(":"))
 
                 const lookout_term_listing_embed = build_listing_embed(
                     this.listing_config,
